@@ -11,9 +11,14 @@ import com.badlogic.gdx.graphics.g3d.particles.influencers.ColorInfluencer;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Circle;
 import com.badlogic.gdx.math.Intersector;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector3;
 
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.Random;
+
 
 public class FlappyBird extends ApplicationAdapter {
 	SpriteBatch batch;
@@ -21,10 +26,14 @@ public class FlappyBird extends ApplicationAdapter {
 	ShapeRenderer shapeRenderer;
 
 	Texture[] birds;
+	Texture[] enemyType;
+
 	int flapState = 0;
 	float birdY = 0;
 	float velocity = 0;
-	Circle birdCircle;
+	float birdYOld = 0;
+	int turn = 0;
+    Circle birdCircle;
 	Rectangle[] tubeTopShapes = new Rectangle[4];
 	Rectangle[] tubeBottomShapes = new Rectangle[4];
 
@@ -35,6 +44,14 @@ public class FlappyBird extends ApplicationAdapter {
 	int birdX,tubeTopX,tubeTopY,tubeBottomX,tubeBottomY;
 	int tubeTopOffset = 600;
 	int tubeBottomOffset = 600;
+
+	int numberOfStars = 200;
+	float[] starX = new float[numberOfStars];
+	float[] starY = new float[numberOfStars];
+	float[] starVelocityY = new float[numberOfStars];
+	float[] starRadius = new float[numberOfStars];
+
+
 
 	int gap = 400;
 	float maxTubeOffset;
@@ -49,9 +66,17 @@ public class FlappyBird extends ApplicationAdapter {
 	int score = 0;
 	int scoringTube = 0;
 
+	Queue<Bullet> bullets = new LinkedList<Bullet>();
+	Queue<Enemy> enemies = new LinkedList<Enemy>();
+	int enemyCounter = 0;
+	int enemyShootCounter = 0;
+
+
 	BitmapFont font;
 	Texture gameOver;
-	
+
+	long startTime;
+
 	@Override
 	public void create () {
 		batch = new SpriteBatch();
@@ -65,6 +90,10 @@ public class FlappyBird extends ApplicationAdapter {
 		birds[4] = new Texture("playerA2.png");
 		birds[2] = new Texture("playerD1.png");
 		birds[5] = new Texture("playerD2.png");
+
+		enemyType = new Texture[1];
+		enemyType[0] = new Texture("enemy1.png");
+
 
 
 		shapeRenderer = new ShapeRenderer();
@@ -80,10 +109,18 @@ public class FlappyBird extends ApplicationAdapter {
 		font.setColor(Color.WHITE);
 		font.getData().setScale(10);
 
+		Random rand = new Random();
+		for(int i=0; i<numberOfStars; i++){
+			starX[i] = 0;
+			starY[i] = rand.nextInt((Gdx.graphics.getHeight() - 1) + 1) + 1;
+			starVelocityY[i] = rand.nextInt((40 - 1) + 1) + 1;
+			starRadius[i] = rand.nextInt((4 - 1) + 1) + 1;
+		}
 		startGame();
 	}
 
 	public void startGame(){
+		startTime = System.nanoTime();
 		birdY = (Gdx.graphics.getHeight()-birds[0].getHeight())/2;
 		for(int i=0; i<numberOfTubes; i++){
 			tubeOffset[i] = (randomGenerator.nextFloat()-0.5f) * (Gdx.graphics.getHeight() - gap - 200);
@@ -105,10 +142,10 @@ public class FlappyBird extends ApplicationAdapter {
 		batch.begin();
 		batch.draw(background, 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
+
 		if(gameState == 1) {
 
 			if(tubeX[scoringTube] < Gdx.graphics.getWidth() / 2){
-				score++;
 				Gdx.app.log("Score",String.valueOf(score));
 				if(scoringTube < numberOfTubes-1 ){
 					scoringTube++;
@@ -117,44 +154,38 @@ public class FlappyBird extends ApplicationAdapter {
 				}
 			}
 
-			velocity = Gdx.input.getGyroscopeY();
-
+			velocity = Gdx.input.getGyroscopeX()*35;
 
 			distanceTraveled += tubeVelocity;
 
-			for(int i=0; i<numberOfTubes; i++) {
 
-				if(tubeX[i] < - tubeTop.getWidth()) {
-					tubeX[i] += numberOfTubes*distanceBetweenTubes;
-					tubeOffset[i] = (randomGenerator.nextFloat()-0.5f) * (Gdx.graphics.getHeight() - gap - 200);
-				} else {
-					tubeX[i] -= tubeVelocity;
-				}
-
-				tubeTopY = (Gdx.graphics.getHeight() + gap) / 2;
-				tubeBottomX = (Gdx.graphics.getWidth() - tubeBottom.getWidth()) / 2;
-				tubeBottomY = (Gdx.graphics.getHeight() - gap) / 2 - tubeBottom.getHeight();
-
-				batch.draw(tubeTop, tubeX[i], tubeTopY + tubeOffset[i]);
-				batch.draw(tubeBottom, tubeX[i], tubeBottomY + tubeOffset[i]);
-
-				tubeTopShapes[i].set(tubeX[i],tubeTopY + tubeOffset[i],tubeTop.getWidth(),tubeTop.getHeight());
-				tubeBottomShapes[i].set(tubeX[i],tubeBottomY + tubeOffset[i],tubeBottom.getWidth(),tubeBottom.getHeight());
-
-			}
+			birdYOld = birdY;
 
 
-			if(birdY < Gdx.graphics.getHeight()){
-				if(birdY > 0) {
+			if(birdY < Gdx.graphics.getHeight()-birds[flapState].getHeight()) {
+				if (birdY > 0) {
 
-					velocity += gravity;
+					//velocity += gravity;
 					birdY -= velocity;
 				} else {
+					birdY++;
 					//gameState = 2;
 				}
 			}
-
-
+			else{
+				birdY--;
+			}
+			/*
+			if(birdY-birdYOld>50){
+				turn = 2;
+			}
+			else if(birdY-birdYOld<50){
+				turn = 1;
+			}
+			else
+			{
+				turn = 0;
+			}*/
 
 		} else if(gameState == 0) {
 
@@ -169,6 +200,9 @@ public class FlappyBird extends ApplicationAdapter {
 				score = 0;
 				scoringTube = 0;
 				velocity = 0;
+
+				bullets.clear();
+				enemies.clear();
 			}
 		}
 
@@ -194,15 +228,63 @@ public class FlappyBird extends ApplicationAdapter {
 			}
 		}
 
-		birdX = (Gdx.graphics.getWidth() - birds[flapState].getWidth()) / 2;
 
-		batch.draw(birds[flapState], birdX, birdY);
+
+
+		birdX =  birds[flapState].getWidth();
+		batch.draw(birds[flapState+turn], birdX, birdY);
+
 		font.draw(batch,String.valueOf(score),100,200);
+
+		//enemy render + collisions
+		for(Enemy enemy : enemies) {
+
+			for(Bullet bullet : bullets) {
+				if (bullet.getOwner() == 0) {
+					if (bullet.getX() < Gdx.graphics.getWidth() && (bullet.getX() >= enemy.getX()) && bullet.getY() <= enemy.getY() + enemyType[0].getWidth() - 5 && bullet.getY() >= enemy.getY() + 5) {
+						bullets.remove(bullet);
+						enemies.remove(enemy);
+						score++;
+						break;
+					}
+
+				}
+				if (bullet.getOwner() == 1) {
+					if ((bullet.getX() >= birdX) && bullet.getY() <= birdY + birds[0].getWidth() - 5 && bullet.getY() >= birdY + 5) {
+						bullets.remove(bullet);
+						gameState = 2;
+						break;
+
+					}
+
+				}
+			}
+			//render enemy
+			batch.draw(enemyType[0], enemy.getX(), enemy.getY());
+
+		}
+
 		batch.end();
+
 
 		birdCircle.set(Gdx.graphics.getWidth()/2,birdY+birds[flapState].getHeight()/2,birds[flapState].getWidth()/2);
 
+		//background stars
+		Random rand = new Random();
+		for(int i=0; i<numberOfStars; i++){
 
+			starX[i] = starX[i] - starVelocityY[i];
+
+			if(starX[i] <= 0){
+				starX[i] = Gdx.graphics.getWidth();
+				starY[i] = rand.nextInt((Gdx.graphics.getHeight() - 1) + 1) + 1;
+			}
+
+			shapeRenderer.setColor(new Color(235,247,73,1));
+			shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+			shapeRenderer.circle(starX[i], starY[i] , starRadius[i]);
+			shapeRenderer.end();
+		}
 
 		for(int i=0; i<numberOfTubes; i++) {
 
@@ -212,11 +294,75 @@ public class FlappyBird extends ApplicationAdapter {
 		}
 
 
+		if(gameState == 1) {
+
+			if (Gdx.input.justTouched()) {
+				bullets.add(new Bullet(birds[flapState].getWidth() + birds[flapState].getWidth() / 2-10, birdY + birds[flapState].getHeight() / 2-5, 1, 0));
+			}
+		}
+
+
+        boolean clear = false;
+        do {
+            clear = true;
+            for(Bullet bullet : bullets) {
+                if ((bullet.owner == 0 && bullet.getX() >= Gdx.graphics.getWidth()-21) || bullet.getX() < 0) {
+                    bullets.remove(bullet);
+                    clear = false;
+                    break;
+                }
+            }
+
+        } while (!clear);
+
+		for(Bullet bullet : bullets){
+			//render bullets
+			shapeRenderer.setColor(Color.RED);
+			shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+			shapeRenderer.rect(bullet.getX(), bullet.getY(), 20, 10);
+			shapeRenderer.end();
+		}
+
+		//enemy
+		if(gameState == 1){
+			enemyCounter++;
+			if(enemyCounter == 100){
+				enemyCounter = 0;
+			}
+			if(enemyCounter == 0 /*&& enemies.size()< 1*/){
+				enemies.add(new Enemy(Gdx.graphics.getWidth()-200, (Gdx.graphics.getHeight()-birds[0].getHeight())/2, Gdx.graphics.getHeight()));
+			}
+
+			enemyShootCounter++;
+			if(enemyShootCounter==40){
+				enemyShootCounter=0;
+			}
+
+			if(enemyShootCounter==0 ) {
+				for (Enemy enemy2 : enemies) {
+					if(Math.random() < 0.5)
+						bullets.add(new Bullet(enemy2.getX(), enemy2.getY(), -1, 1));
+				}
+			}
+		}
+
+        //same length of ticks prevent lags
+		if((System.nanoTime() - startTime)/0.000001 > 50) {
+			if(gameState == 1){
+                for (Bullet bullet : bullets) {
+                    bullet.tick();
+                }
+                for (Enemy enemy : enemies) {
+                    enemy.tick();
+                }
+			}
+			startTime = System.nanoTime();
+		}
+
 	}
-	
+
 	@Override
 	public void dispose () {
 		batch.dispose();
-
 	}
 }
