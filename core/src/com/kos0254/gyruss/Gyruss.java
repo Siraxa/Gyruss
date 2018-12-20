@@ -12,8 +12,18 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Circle;
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.Json;
 
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 import java.util.Random;
 
@@ -81,11 +91,28 @@ public class Gyruss extends ApplicationAdapter {
 	Sound dead;
 	long idMusic;
 
+	boolean canfire;
+
 	boolean vibrate;
+	boolean doHighScore;
     Preferences prefs;
 
-    @Override
+	Json json;
+	Date date;
+
+	GregorianCalendar calendarG;
+
+	public static String getStringFromDate(GregorianCalendar calendar){
+		SimpleDateFormat fmt = new SimpleDateFormat("dd-MMM-yyyy");
+		fmt.setCalendar(calendar);
+		String dateFormatted = fmt.format(calendar.getTime());
+		return dateFormatted;
+	}
+
+	@Override
 	public void create () {
+		doHighScore = true;
+		json = new Json();
     	vibrate = true;
 		sound = Gdx.audio.newSound(Gdx.files.internal("music.mp3"));
 		fire = Gdx.audio.newSound(Gdx.files.internal("shot.mp3"));
@@ -107,7 +134,7 @@ public class Gyruss extends ApplicationAdapter {
 		enemyType = new Texture[1];
 		enemyType[0] = new Texture("enemy1.png");
 
-
+		canfire = false;
 
 		shapeRenderer = new ShapeRenderer();
 		birdCircle = new Circle();
@@ -131,6 +158,22 @@ public class Gyruss extends ApplicationAdapter {
 		}
 
         prefs = Gdx.app.getPreferences("My Preferences");
+
+		date = new Date(Long.MIN_VALUE);
+		calendarG = new GregorianCalendar();
+		calendarG.setTime(date);
+
+		if(!prefs.contains("highscore"))
+		{
+			int [] myarray = new int[10];
+			Arrays.fill(myarray, 0);
+			prefs.putString("highscore", json.toJson(myarray) );
+
+			String [] myarray2 = new String[10];
+			Arrays.fill(myarray2, getStringFromDate(calendarG));
+			prefs.putString("highscoresdates", json.toJson(myarray2) );
+		}
+
 
 
 
@@ -196,37 +239,79 @@ public class Gyruss extends ApplicationAdapter {
 			else{
 				birdY--;
 			}
-			/*
-			if(birdY-birdYOld>50){
-				turn = 2;
-			}
-			else if(birdY-birdYOld<50){
+/*
+			if(birdY-Gdx.graphics.getHeight()/2<300){
 				turn = 1;
+			}
+			else if(birdY-Gdx.graphics.getHeight()/2>-300){
+				turn = 2;
 			}
 			else
 			{
 				turn = 0;
-			}*/
-
+			}
+*/
 		} else if(gameState == 0) {
 
 			if(Gdx.input.justTouched()){
 				gameState = 1;
 			}
 		} else if(gameState ==2){
-		    if(prefs.getInteger("highscore",0) < score){
-		        prefs.putInteger("highscore", score);
-		        prefs.putString("highscorestring", String.valueOf(score) );
+
+			prefs.flush();
+
+			String serializedInts = prefs.getString("highscore");
+			int[] deserializedScores = json.fromJson(int[].class, serializedInts);
+
+			String serializedDates = prefs.getString("highscoresdates");
+			String[] deserializedScoresDates = json.fromJson(String[].class, serializedDates);
+
+		    if(score > deserializedScores[0] && doHighScore){
+				doHighScore = false;
+				deserializedScores[0] = score;
+
+				Arrays.sort(deserializedScores);
+
+		        prefs.putString("highscore", json.toJson(deserializedScores) );
+
+				date = new Date();
+				calendarG.setTime(date);
+				deserializedScoresDates[0] = getStringFromDate(calendarG);
+				List<String> deserializedScoresDates2 = Arrays.asList(deserializedScoresDates);
+
+                Collections.sort(deserializedScoresDates2, new Comparator<String>() {
+						DateFormat f = new SimpleDateFormat("dd-MMM-yyyy");
+						@Override
+						public int compare(String o1, String o2) {
+							try {
+								return f.parse(o2).compareTo(f.parse(o1));
+							} catch (ParseException e) {
+								throw new IllegalArgumentException(e);
+							}
+						}
+					});
+				prefs.putString("highscoresdates", json.toJson(deserializedScoresDates2.toArray(deserializedScoresDates)) );
+				deserializedScoresDates = deserializedScoresDates2.toArray(deserializedScoresDates);
             }
             if(vibrate) {
 				Gdx.input.vibrate(300);
 				vibrate = false;
 			}
-		    batch.draw(gameOver,Gdx.graphics.getWidth()/2-gameOver.getWidth()/2,Gdx.graphics.getHeight()/2-gameOver.getHeight()/2);
+		    //batch.draw(gameOver,Gdx.graphics.getWidth()/2-gameOver.getWidth()/2,Gdx.graphics.getHeight()/2-gameOver.getHeight()/2);
 		    prefs.flush();
-            font.draw(batch,"Highscore: " + prefs.getString("highscorestring", "0"),100,400);
+
+			font.draw(batch,"Top 10:",90,1850);
+
+			for(int i = 0; i < 10; i++){
+				if (deserializedScores[9-i] != 0){
+					font.draw(batch, String.valueOf(deserializedScores[9-i]) + "   " + deserializedScoresDates[9-i],90,1700-i*150);
+
+				}
+			}
+
             sound.stop(idMusic);
 			if(Gdx.input.justTouched()){
+				doHighScore = true;
 				vibrate = true;
 				gameState = 1;
 				startGame();
@@ -263,7 +348,7 @@ public class Gyruss extends ApplicationAdapter {
 		}
 
 
-
+		//render player
 		batch.draw(birds[flapState+turn], birdX, birdY);
 
 		font.draw(batch,String.valueOf(score),100,200);
@@ -284,7 +369,7 @@ public class Gyruss extends ApplicationAdapter {
 
 				}
 				if (bullet.getOwner() == 1) {
-					if ((bullet.getX() >= birdX) && bullet.getY() <= birdY + birds[0].getWidth() - 5 && bullet.getY() >= birdY + 5) {
+					if ((bullet.getX() <= birdX+birds[flapState].getHeight()) && bullet.getY() <= birdY + birds[0].getWidth() - 5 && bullet.getY() >= birdY + 5) {
 						bullets.remove(bullet);
 						gameState = 2;
 						dead.play(1.0f);
@@ -332,8 +417,7 @@ public class Gyruss extends ApplicationAdapter {
 		if(gameState == 1) {
 
 			if (Gdx.input.justTouched()) {
-				bullets.add(new Bullet(birds[flapState].getWidth() + birds[flapState].getWidth() / 2-10, birdY + birds[flapState].getHeight() / 2-5, 1, 0));
-				fire.play(1.0f);
+				canfire = true;
 			}
 		}
 
@@ -353,7 +437,14 @@ public class Gyruss extends ApplicationAdapter {
 
 		for(Bullet bullet : bullets){
 			//render bullets
-			shapeRenderer.setColor(Color.RED);
+			if(bullet.owner == 1){
+				shapeRenderer.setColor(Color.RED);
+
+			}
+			else{
+				shapeRenderer.setColor(Color.GREEN);
+
+			}
 			shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 			shapeRenderer.rect(bullet.getX(), bullet.getY(), 20, 10);
 			shapeRenderer.end();
@@ -384,6 +475,13 @@ public class Gyruss extends ApplicationAdapter {
 
         //same length of ticks prevent lags
 		if((System.nanoTime() - startTime)/0.000001 > 50) {
+
+			if(canfire){
+				bullets.add(new Bullet(birds[flapState].getWidth() + birds[flapState].getWidth() / 2-10, birdY + birds[flapState].getHeight() / 2-5, 1, 0));
+				fire.play(1.0f);
+				canfire = false;
+			}
+
 			if(gameState == 1){
                 for (Bullet bullet : bullets) {
                     bullet.tick();
