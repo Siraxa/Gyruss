@@ -1,108 +1,109 @@
-#!/usr/bin/env python
-
-"""
-Solve the XOR problem with Tensorflow.
-
-The XOR problem is a two-class classification problem. You only have four
-datapoints, all of which are given during training time. Each datapoint has
-two features:
-
-      x    o
-
-      o    x
-
-As you can see, the classifier has to learn a non-linear transformation of
-the features to find a propper decision boundary.
-"""
-
-__author__ = "Martin Thoma"
-__email__ = "info@martin-thoma.de"
-
-import tensorflow as tf
-import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.preprocessing import OneHotEncoder
+import pandas as pd
+import keras as K
+import matplotlib.pyplot as plt
+import multiprocessing
+import time
+import collections
+import sys
+import signal
 
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
-from keras.optimizers import SGD
-import numpy as np 
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
-from keras.optimizers import SGD
-from keras.callbacks import Callback
-from keras.initializers import VarianceScaling 
-import numpy as np 
+from IPython import get_ipython
+ipy = get_ipython()
+if ipy is not None:
+    ipy.run_line_magic('matplotlib', 'inline')
 
+'exec(%matplotlib inline)'
+# The original class can be imported like this:
+# from keras.preprocessing.image import ImageDataGenerator
 
-lastEpoch = 0
+# We access the modified version through T.ImageDataGenerator
+import tools.image as T
 
-
-class EarlyStoppingByLossVal(Callback):
-    def __init__(self, monitor='val_loss', value=0.008, verbose=0):
-        super(Callback, self).__init__()
-        self.monitor = monitor
-        self.value = value
-        self.verbose = verbose
-    def on_epoch_end(self, epoch, logs={}):
-        global lastEpoch
-        current = logs.get("loss")         
-        if current != None and current < self.value:
-            self.model.stop_training = True
-            lastEpoch = epoch + 1
+# Useful for checking the output of the generators after code change
+try:
+    from importlib import reload
+    reload(T)
+except:
+    reload(T)
 
 
-x = np.array([
-    [0,0], [0,1],
-    [1,0], [1,1]
-])
-y = np.array([
-    [0], [1], 
-    [1], [0]
-])
+def preprocess_img(img):
+    img = img.astype(np.float32) / 255.0
+    img -= 0.5
+    return img * 2
 
-model = Sequential()
-model.add(Dense(8, 
-                input_dim = 2, 
-                use_bias = False, 
-                kernel_initializer = VarianceScaling()))
-model.add(Activation('tanh'))
-model.add(Dense(1, 
-                use_bias = False, 
-                kernel_initializer = VarianceScaling()))
-model.add(Activation('tanh'))
-model.compile(loss = "mean_squared_error", 
-              optimizer = SGD(lr = 0.6, 
-                              momentum = 0.6))
+def plot_images(img_gen, title):
+    fig, ax = plt.subplots(6, 6, figsize=(10, 10))
+    plt.suptitle(title, size=32)
+    plt.setp(ax, xticks=[], yticks=[])
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    for (imgs, labels) in img_gen:
+        for i in range(6):
+            for j in range(6):
+                if i*6 + j < 32:
+                    ax[i][j].imshow(imgs[i*6 + j])
+        break  
 
-model.fit(x, y, 
-          verbose = 1, 
-          batch_size = 4, 
-          epochs = 10000, 
-          callbacks = [
-            EarlyStoppingByLossVal()
-          ])
+from keras.datasets.cifar10 import load_data
+from keras.utils.np_utils import to_categorical
 
-print(model.predict_proba(x))
-print("Last epoch: " + str(lastEpoch))
+(X_train, y_train), (X_test, y_test) = load_data()
 
+y_train_cat = to_categorical(y_train)
+y_test_cat = to_categorical(y_test)
 
+durs = collections.defaultdict(list)
+num_cores = 2
+try:
+    num_cores = multiprocessing.cpu_count()
+except:
+    pass
 
-print("asddddddddddd")
-print(model.predict(np.array([
-    [1,1]
-])))
+for j in range(10):
+    print('Round', j)
+    
+    for num_p in range(0, num_cores + 1):
+        pool = None
+        if num_p > 0:
+            pool = multiprocessing.Pool(processes=num_p)
+            
+        start = time.time()
+        gen = T.ImageDataGenerator(
+             featurewise_center=False,
+             samplewise_center=False,
+             featurewise_std_normalization=False,
+             samplewise_std_normalization=False,
+             zca_whitening=False,
+             rotation_range=45,
+             width_shift_range=.1,
+             height_shift_range=.1,
+             shear_range=0.,
+             zoom_range=0,
+             channel_shift_range=0,
+             fill_mode='nearest',
+             cval=0.,
+             horizontal_flip=True,
+             vertical_flip=False,
+             rescale=None,
+             preprocessing_function=preprocess_img,
+             dim_ordering='default',
+             pool=pool
+        )
 
-dol = model
-from multiprocessing import Pool
+        gen.fit(X_train)
+        X_train_aug = gen.flow(X_train, y_train_cat, seed=0)
 
-def f(x):
-    dol.predict(np.array([[1,1]]))
-    if x == 1:
-        return 1
-    else:
-        return 0
+        for i, (imgs, labels) in enumerate(X_train_aug):
+            if i == 100:
+                break
 
-if __name__ == '__main__':
-    with Pool(5) as p:
-        print(p.map(f, [1, 2, 3, 1, 0, 2]))
+        dur = time.time() - start
+        #print(num_p, dur)
+        sys.stdout.write('{}: {} ... '.format(num_p, dur))
+        sys.stdout.flush()
+        
+        durs[num_p].append(dur)
+
+        if pool:
+            pool.terminate()
